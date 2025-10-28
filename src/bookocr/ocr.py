@@ -1,13 +1,16 @@
 import math
+import copy
+import cv2
+import numpy as np
 import pandas as pd
 from statistics import mode, median
 from scipy.signal import find_peaks
 
-from bookocr.config import OcrConfig
-from bookocr.stats_config import OcrStatsConfig
-from bookocr._stats import Stats
-from bookocr._service import *
-import bookocr._char_ocr as _c
+from .config import OcrConfig
+from .stats_config import OcrStatsConfig
+from ._stats import Stats
+from . import _char_ocr
+from . import _service
 
 
 class Ocr:
@@ -43,7 +46,7 @@ class Ocr:
         return binary_image, grayscale_image
 
     def _alignment_angle_calculation(self, binary_image):
-        points_image = collapse_connected_components(binary_image)
+        points_image = _service.collapse_connected_components(binary_image)
         self._s.save_image("points", points_image)
 
         theta_step = self._cg.hough_angle_step * np.pi / 180
@@ -81,7 +84,7 @@ class Ocr:
             angles.append(theta)
 
         if self._scg.is_enabled:
-            image_for_stats = gray2color(binary_image)
+            image_for_stats = _service.gray2color(binary_image)
             self._s.hough_lines_draw(image_for_stats, lines)
             self._s.save_image("lines", image_for_stats)
 
@@ -94,7 +97,7 @@ class Ocr:
 
     def _texts_extraction(self, binary_image, grayscale_image):
         height, width = binary_image.shape
-        connected_components_areas = connected_components_extraction(binary_image, True)[4]
+        connected_components_areas = _service.connected_components_extraction(binary_image, True)[4]
         cell_size = int(math.sqrt(median(set(connected_components_areas[1:]))))
         cell_size = int(cell_size * self._cg.cell_size_multiplier)
         edge_map = cv2.Canny(image=grayscale_image,
@@ -119,17 +122,17 @@ class Ocr:
                 x0 = col_i * cell_size
                 y1 = (row_i + 1) * cell_size
                 x1 = (col_i + 1) * cell_size
-                hor_hist = horizontal_histogram(edge_map[y0:y1, x0:x1])
+                hor_hist = _service.horizontal_histogram(edge_map[y0:y1, x0:x1])
                 count_hor = sum(map(lambda x: threshold1 <= x <= threshold2, hor_hist))
                 if count_hor >= self._cg.text_assumption_min_occurrences:
                     cells[row_i][col_i] = 1
 
         image_for_stats = None
         if self._scg.is_enabled:
-            image_for_stats = gray2color(binary_image)
+            image_for_stats = _service.gray2color(binary_image)
             self._s.texts_extraction_cells_draw(image_for_stats, cells, cell_size)
 
-        _, _, coords, _ = connected_components_extraction(cells)
+        _, _, coords, _ = _service.connected_components_extraction(cells)
         coords_with_indices = list(coords)
         coords_with_indices = [[i, v] for i, v in enumerate(coords_with_indices)]
         coords_with_indices = sorted(coords_with_indices[1:], key=lambda x: x[1][4])
@@ -141,7 +144,8 @@ class Ocr:
             indices = [[1]]
         else:
             indices = [[coords_with_indices[-1][0]]]
-            def hor_overlap(coord1, coord2): return (coord1[0] <= x1_f(coord2)) and (x1_f(coord1) >= coord2[0])
+            def hor_overlap(coord1, coord2):
+                return (coord1[0] <= _service.x1_f(coord2)) and (_service.x1_f(coord1) >= coord2[0])
 
             for index, coord in coords_with_indices[:-1]:
                 to_skip = False
@@ -161,7 +165,7 @@ class Ocr:
                     if index in page:
                         break
                     exp_coords = coords[page[0]]
-                    if abs(coord[0] - exp_coords[0]) <= deviation and abs(x1_f(coord) - x1_f(exp_coords)) <= deviation:
+                    if abs(coord[0] - exp_coords[0]) <= deviation and abs(_service.x1_f(coord) - _service.x1_f(exp_coords)) <= deviation:
                         page.append(index)
                         break
 
@@ -169,7 +173,7 @@ class Ocr:
         for page in indices:
             areas_coords.append([])
             for i, v in enumerate(page):
-                areas_coords[-1].append([coords[v][0], coords[v][1], x1_f(coords[v])+1, y1_f(coords[v])+1])
+                areas_coords[-1].append([coords[v][0], coords[v][1], _service.x1_f(coords[v])+1, _service.y1_f(coords[v])+1])
 
         for page in areas_coords:
             page.sort(key=lambda x: x[1])
@@ -201,7 +205,7 @@ class Ocr:
                     area[3] = min(area[3] + padding, grayscale_image.shape[0])
 
                 area_image = binary_image[area[1]:area[3], area[0]:area[2]]
-                area_image, x, y, w, h = crop_image(area_image)
+                area_image, x, y, w, h = _service.crop_image(area_image)
                 text_images[-1].append(area_image)
 
                 if self._scg.is_enabled:
@@ -214,7 +218,7 @@ class Ocr:
     def _texts_denoising(self):
         for page_i, page_v in enumerate(self._data):
             for area_i, area_v in enumerate(page_v):
-                _, labels, coords, _ = connected_components_extraction(area_v)
+                _, labels, coords, _ = _service.connected_components_extraction(area_v)
                 median_height = int(median(set(np.transpose(coords)[3][1:])))
                 threshold = int(((median_height * self._cg.text_denoising_threshold) + 1) ** 2)
 
@@ -225,17 +229,17 @@ class Ocr:
                 labels_to_clean = []
                 for coord_i, coord_v in enumerate(coords[1:], start=1):
                     if coord_v[4] < threshold:
-                        x0, x1 = coord_v[0], x1_f(coord_v)
-                        y0, y1 = coord_v[1], y1_f(coord_v)
-                        move_update_values(labels[y0:y1 + 1, x0:x1 + 1], area_v[y0:y1 + 1, x0:x1 + 1], coord_i, 0)
+                        x0, x1 = coord_v[0], _service.x1_f(coord_v)
+                        y0, y1 = coord_v[1], _service.y1_f(coord_v)
+                        _service.move_update_values(labels[y0:y1 + 1, x0:x1 + 1], area_v[y0:y1 + 1, x0:x1 + 1], coord_i, 0)
                         labels_to_clean.append(coord_i)
 
                 if self._scg.is_enabled:
-                    cleaned_image = self._s.texts_denoising_image(gray2color(area_v), labels_copy, coords,
+                    cleaned_image = self._s.texts_denoising_image(_service.gray2color(area_v), labels_copy, coords,
                                                                   labels_to_clean)
                     self._s.save_image("td_" + str(page_i) + "_" + str(area_i), cleaned_image)
 
-                area_v = crop_image(area_v)[0]
+                area_v = _service.crop_image(area_v)[0]
 
                 page_v[area_i] = area_v
 
@@ -244,14 +248,14 @@ class Ocr:
             for area_i, area_v in enumerate(page_v):
                 area_lines = []
 
-                _, labels, coords, _ = connected_components_extraction(area_v)
+                _, labels, coords, _ = _service.connected_components_extraction(area_v)
                 median_height = int(median(set(np.transpose(coords)[3][1:])))
 
                 window_size = int(median_height * self._cg.lines_hist_window)
                 window_size = window_size + 1 if window_size % 2 == 0 else window_size
                 window_half_size = (window_size - 1) // 2
 
-                hist = horizontal_histogram(area_v)
+                hist = _service.horizontal_histogram(area_v)
                 max_v = max(hist)
                 reversed_hist = max_v - hist
                 numbers_series = pd.Series(reversed_hist)
@@ -280,19 +284,19 @@ class Ocr:
                                 continue
                             coord = coords[v]
                             if coord[3] > median_height * 2:
-                                cut_values(to_separate[coord[1]:y1_f(coord)+1, coord[0]:x1_f(coord)+1], v)
+                                _service.cut_values(to_separate[coord[1]:_service.y1_f(coord)+1, coord[0]:_service.x1_f(coord)+1], v)
                                 continue
                             visited.add(v)
-                            comp_y = (coord[1] + y1_f(coord)) / 2
+                            comp_y = (coord[1] + _service.y1_f(coord)) / 2
                             if comp_y < sep:
                                 top_components.add(v)
-                        to_separate, line = separate_connected_components(to_separate, coords, sep, 0, top_components)
+                        to_separate, line = _service.separate_connected_components(to_separate, coords, sep, 0, top_components)
                     area_lines.append(line)
                 area_lines.append(to_separate)
                 area_lines.reverse()
 
                 for line_i, line_v in enumerate(area_lines):
-                    line_v = crop_image(line_v, axis=0)[0]
+                    line_v = _service.crop_image(line_v, axis=0)[0]
                     line_v[line_v != 0] = 255
                     line_v = line_v.astype(np.uint8)
                     area_lines[line_i] = line_v
@@ -303,9 +307,9 @@ class Ocr:
                     self._s.save_image("h_" + str(page_i) + "_" + str(area_i), hist_image)
                     hist_image = self._s.horizontal_histogram_barriers(max_v - reversed_hist, seps)
                     self._s.save_image("hr_" + str(page_i) + "_" + str(area_i), hist_image)
-                    text_image = self._s.horizontal_barriers(gray2color(area_v), seps)
+                    text_image = self._s.horizontal_barriers(_service.gray2color(area_v), seps)
                     self._s.save_image("ht_" + str(page_i) + "_" + str(area_i), text_image)
-                    result_image = self._s.vertical_concatenation(list(map(gray2color, area_lines)))
+                    result_image = self._s.vertical_concatenation(list(map(_service.gray2color, area_lines)))
                     self._s.save_image("l_" + str(page_i) + "_" + str(area_i), result_image)
 
                 page_v[area_i] = area_lines
@@ -314,13 +318,13 @@ class Ocr:
         for page_i, page_v in enumerate(self._data):
             for area_i, area_v in enumerate(page_v):
                 for line_i, line_v in enumerate(area_v):
-                    line_v, x, _, width, text_height = crop_image(line_v)
+                    line_v, x, _, width, text_height = _service.crop_image(line_v)
                     space_threshold = text_height * self._cg.space_threshold
 
                     is_paragraph = (x >= space_threshold * self._cg.paragraph_spaces)
                     line_words = [is_paragraph]
 
-                    histogram = vertical_histogram(line_v)
+                    histogram = _service.vertical_histogram(line_v)
                     curr_gap = 0
                     prev_coord = 0
                     for i, v in enumerate(histogram):
@@ -348,10 +352,10 @@ class Ocr:
                     for word_i, word_v in enumerate(line_v[1:], start=1):
                         word_chars = []
 
-                        _, labels, coords, _ = connected_components_extraction(word_v)
+                        _, labels, coords, _ = _service.connected_components_extraction(word_v)
                         coords_with_indices = list(coords)
                         coords_with_indices = [[i, v] for i, v in enumerate(coords_with_indices)][1:]
-                        coords_with_indices = sorted(coords_with_indices, key=lambda x: x1_f(x[1]), reverse=True)
+                        coords_with_indices = sorted(coords_with_indices, key=lambda x: _service.x1_f(x[1]), reverse=True)
 
                         to_separate = labels
                         while coords_with_indices:
@@ -363,7 +367,7 @@ class Ocr:
                                 flag = False
                                 for i, [index_t, coord_t] in enumerate(coords_with_indices):
                                     x0_t = coord_t[0]
-                                    x1_t = x1_f(coord_t)
+                                    x1_t = _service.x1_f(coord_t)
                                     if x1_t < sep:
                                         flag = False
                                         break
@@ -376,15 +380,15 @@ class Ocr:
                                         flag = True
                                         break
                             if sep >= 0:
-                                to_separate, char = separate_connected_components(to_separate, coords, sep, 1,
-                                                                                  right_components, sep_to_end=True)
-                                to_separate = crop_image(to_separate, axis=1)[0]
+                                to_separate, char = _service.separate_connected_components(to_separate, coords, sep, 1,
+                                                                                           right_components, sep_to_end=True)
+                                to_separate = _service.crop_image(to_separate, axis=1)[0]
                                 word_chars.append(char)
                         word_chars.append(to_separate)
                         word_chars.reverse()
 
                         for char_i, char_v in enumerate(word_chars):
-                            char_v = crop_image(char_v, axis=1)[0]
+                            char_v = _service.crop_image(char_v, axis=1)[0]
                             char_v[char_v != 0] = 255
                             char_v = char_v.astype(np.uint8)
                             word_chars[char_i] = char_v
@@ -397,7 +401,7 @@ class Ocr:
                     self._s.save_image("c_" + str(page_i) + "_" + str(area_i), area_image)
 
     def _characters_recognition(self):
-        _c.pages_ocr(self._data)
+        _char_ocr.pages_ocr(self._data)
 
     def image_ocr(self, image_path):
         image = cv2.imread(image_path)
@@ -411,10 +415,10 @@ class Ocr:
 
         if self._cg.fix_rotation:
             angle = self._alignment_angle_calculation(binary_image)
-            binary_image = rotate_image(binary_image, angle, True)
-            grayscale_image = rotate_image(grayscale_image, angle)
-        binary_image, x, y, w, h = crop_image(binary_image)
-        grayscale_image = crop_image(grayscale_image, x, y, w, h)[0]
+            binary_image = _service.rotate_image(binary_image, angle, True)
+            grayscale_image = _service.rotate_image(grayscale_image, angle)
+        binary_image, x, y, w, h = _service.crop_image(binary_image)
+        grayscale_image = _service.crop_image(grayscale_image, x, y, w, h)[0]
         if binary_image.size == 0:
             self._data = []
             return self.get_data_copy()

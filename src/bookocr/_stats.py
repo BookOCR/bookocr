@@ -3,9 +3,9 @@ import cv2
 import numpy as np
 from pathlib import Path
 
-from bookocr.config import OcrConfig
-from bookocr.stats_config import OcrStatsConfig
-import bookocr.ocr as _ocr
+from .config import OcrConfig
+from .stats_config import OcrStatsConfig
+from . import ocr as _ocr
 
 
 def transparent_image(shape, foreground_color, background_color, opacity):
