@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .config import OcrConfig
 from .stats_config import OcrStatsConfig
-from . import ocr as _ocr
+from . import _service
 
 
 def transparent_image(shape, foreground_color, background_color, opacity):
@@ -205,10 +205,10 @@ class Stats:
         cv2.line(cleaned_image, (line_x, 0), (line_x, indicators_height), color, self._scg.lines_thickness)
         for coord_i in labels_to_clean:
             coord_v = coords[coord_i]
-            x0, x1 = coord_v[0], _ocr.x1_f(coord_v)
-            y0, y1 = coord_v[1], _ocr.y1_f(coord_v)
-            _ocr.copy_update_values(labels[y0:y1+1, x0:x1+1], cleaned_image[y0:y1+1, x0:x1+1], coord_i, list(color))
-            line_y = (coord_v[1] + _ocr.y1_f(coord_v)) // 2
+            x0, x1 = coord_v[0], _service.x1_f(coord_v)
+            y0, y1 = coord_v[1], _service.y1_f(coord_v)
+            _service.copy_update_values(labels[y0:y1+1, x0:x1+1], cleaned_image[y0:y1+1, x0:x1+1], coord_i, list(color))
+            line_y = (coord_v[1] + _service.y1_f(coord_v)) // 2
             cv2.line(cleaned_image, (line_x, line_y), (cleaned_image.shape[1], line_y),
                      color, self._scg.lines_thickness)
         return cleaned_image
@@ -221,7 +221,7 @@ class Stats:
             line_words_v = line_words_v[1:].copy()
             if not from_chars:
                 for word_i, word_v in enumerate(line_words_v):
-                    word_v = _ocr.gray2color(word_v)
+                    word_v = _service.gray2color(word_v)
                     line_words_v[word_i] = self.add_padding(word_v, 0)
                 line_image = self.horizontal_concatenation(line_words_v, last_barrier=True)
             else:
@@ -251,7 +251,7 @@ class Stats:
             line_words = [line_chars_v[0]]
             for word_chars_i, word_chars_v in enumerate(line_chars_v[1:], start=1):
                 for char_i, char_v in enumerate(word_chars_v):
-                    char_v = _ocr.gray2color(char_v)
+                    char_v = _service.gray2color(char_v)
                     char_v = self.add_padding(char_v, 0)
                     word_chars_v[char_i] = char_v
                 word_image = self.horizontal_concatenation(word_chars_v,
