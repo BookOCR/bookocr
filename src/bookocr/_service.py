@@ -17,13 +17,13 @@ def y1_f(coord):
 
 
 def connected_components_extraction(binary_image, box_areas=False, connectivity=8):
-    data = cv2.connectedComponentsWithStats(binary_image, connectivity=connectivity, ltype=cv2.CV_32S)
-    data = list(data)
+    num_labels, labels, coords, centroids = cv2.connectedComponentsWithStats(binary_image, connectivity=connectivity, ltype=cv2.CV_32S)
     if box_areas:
-        data.append(np.zeros(len(data[2]), dtype=np.int32))
-        for coord_i, coord_v in enumerate(data[2]):
-            data[4][coord_i] = coord_v[2] * coord_v[3]
-    return data
+        areas = np.zeros(len(coords), dtype=np.int32)
+        for coord_i, coord_v in enumerate(coords):
+            areas[coord_i] = coord_v[2] * coord_v[3]
+        return num_labels, labels, coords, centroids, areas
+    return num_labels, labels, coords, centroids
 
 
 def collapse_connected_components(binary_image):
