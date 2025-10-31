@@ -33,12 +33,13 @@ class Ocr:
 
     def _image_preprocessing(self, color_image):
         grayscale_image = cv2.cvtColor(color_image, cv2.COLOR_RGB2GRAY)
-        if self._cg.blur_kernel > 0:
-            if self._cg.blur_kernel % 2 == 0:
-                self._cg.blur_kernel += 1
-            grayscale_image = cv2.GaussianBlur(grayscale_image, (self._cg.blur_kernel, self._cg.blur_kernel), 0)
-        t1, t2 = self._cg.otsu_threshold1, self._cg.otsu_threshold2
-        if self._cg.invert_colors:
+        blur_kernel = self._cg.preprocessing.blur_kernel
+        if blur_kernel > 0:
+            if blur_kernel % 2 == 0:
+                blur_kernel += 1
+            grayscale_image = cv2.GaussianBlur(grayscale_image, (blur_kernel, blur_kernel), 0)
+        t1, t2 = self._cg.preprocessing.otsu_threshold_1, self._cg.preprocessing.otsu_threshold_2
+        if self._cg.preprocessing.invert_colors:
             _, binary_image = cv2.threshold(grayscale_image, t1, t2, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         else:
             _, binary_image = cv2.threshold(grayscale_image, t1, t2, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
@@ -49,11 +50,11 @@ class Ocr:
         points_image = _service.collapse_connected_components(binary_image)
         self._s.save_image("points", points_image)
 
-        theta_step = self._cg.hough_angle_step * np.pi / 180
-        min_theta = np.pi * (0.5 - self._cg.hough_angle_range / 2)
-        max_theta = np.pi * (0.5 + self._cg.hough_angle_range / 2)
+        theta_step = self._cg.alignment.hough_angle_step * np.pi / 180
+        min_theta = np.pi * (0.5 - self._cg.alignment.hough_angle_range / 2)
+        max_theta = np.pi * (0.5 + self._cg.alignment.hough_angle_range / 2)
         min_threshold = 1
-        max_threshold = self._cg.hough_max_threshold
+        max_threshold = self._cg.alignment.hough_max_threshold
         lines = None
         curr_threshold = -1
         while min_threshold <= max_threshold:
@@ -68,9 +69,9 @@ class Ocr:
             else:
                 lines_n = len(lines)
 
-            if lines_n < self._cg.hough_min_lines:
+            if lines_n < self._cg.alignment.hough_min_lines:
                 max_threshold = curr_threshold - 1
-            elif lines_n > self._cg.hough_max_lines:
+            elif lines_n > self._cg.alignment.hough_max_lines:
                 min_threshold = curr_threshold + 1
             else:
                 break
@@ -99,9 +100,10 @@ class Ocr:
         height, width = binary_image.shape
         connected_components_areas = _service.connected_components_extraction(binary_image, True)[4]
         cell_size = int(math.sqrt(median(set(connected_components_areas[1:]))))
-        cell_size = int(cell_size * self._cg.cell_size_multiplier)
-        edge_map = cv2.Canny(image=grayscale_image,
-                             threshold1=self._cg.canny_edges_threshold1, threshold2=self._cg.canny_edges_threshold2)
+        cell_size = int(cell_size * self._cg.text_areas.cell_size_multiplier)
+
+        t1, t2 = self._cg.text_areas.canny_threshold_1, self._cg.text_areas.canny_threshold_2
+        edge_map = cv2.Canny(image=grayscale_image, threshold1=t1, threshold2=t2)
         self._s.save_image("edge_map", edge_map)
 
         if height % cell_size != 0:
@@ -113,8 +115,8 @@ class Ocr:
             edge_map = np.hstack((edge_map, np.zeros((height, add_width), np.uint8)))
             width += add_width
 
-        threshold1 = self._cg.text_assumption_threshold1 * cell_size
-        threshold2 = self._cg.text_assumption_threshold2 * cell_size
+        threshold1 = self._cg.text_areas.text_assumption_threshold_1 * cell_size
+        threshold2 = self._cg.text_areas.text_assumption_threshold_2 * cell_size
         cells = np.zeros((height // cell_size, width // cell_size), np.uint8)
         for row_i, row_v in enumerate(cells):
             for col_i, _ in enumerate(row_v):
@@ -124,7 +126,7 @@ class Ocr:
                 x1 = (col_i + 1) * cell_size
                 hor_hist = _service.horizontal_histogram(edge_map[y0:y1, x0:x1])
                 count_hor = sum(map(lambda x: threshold1 <= x <= threshold2, hor_hist))
-                if count_hor >= self._cg.text_assumption_min_occurrences:
+                if count_hor >= self._cg.text_areas.text_assumption_min_occurrences:
                     cells[row_i][col_i] = 1
 
         image_for_stats = None
@@ -137,7 +139,7 @@ class Ocr:
         coords_with_indices = [[i, v] for i, v in enumerate(coords_with_indices)]
         coords_with_indices = sorted(coords_with_indices[1:], key=lambda x: x[1][4])
 
-        deviation = self._cg.text_areas_deviation
+        deviation = self._cg.text_areas.text_areas_deviation
         if len(coords_with_indices) == 0:
             return [[]]
         elif len(coords_with_indices) == 1:
@@ -194,7 +196,7 @@ class Ocr:
                 area[2] = min(area[2] * cell_size, grayscale_image.shape[1])
                 area[3] = min(area[3] * cell_size, grayscale_image.shape[0])
 
-                padding = int(cell_size * self._cg.text_area_padding)
+                padding = int(cell_size * self._cg.text_areas.text_area_padding)
                 if not np.all(binary_image[area[1]:area[3], area[0]] == 0):
                     area[0] = max(area[0] - padding, 0)
                 if not np.all(binary_image[area[1], area[0]:area[2]] == 0):
@@ -220,7 +222,7 @@ class Ocr:
             for area_i, area_v in enumerate(page_v):
                 _, labels, coords, _ = _service.connected_components_extraction(area_v)
                 median_height = int(median(set(np.transpose(coords)[3][1:])))
-                threshold = int(((median_height * self._cg.text_denoising_threshold) + 1) ** 2)
+                threshold = int(((median_height * self._cg.denoising.text_denoising_threshold) + 1) ** 2)
 
                 labels_copy = None
                 if self._scg.is_enabled:
@@ -251,7 +253,7 @@ class Ocr:
                 _, labels, coords, _ = _service.connected_components_extraction(area_v)
                 median_height = int(median(set(np.transpose(coords)[3][1:])))
 
-                window_size = int(median_height * self._cg.lines_hist_window)
+                window_size = int(median_height * self._cg.lines.lines_hist_window)
                 window_size = window_size + 1 if window_size % 2 == 0 else window_size
                 window_half_size = (window_size - 1) // 2
 
@@ -265,7 +267,7 @@ class Ocr:
                 reversed_hist = [0]*window_half_size + moving_averages_list[window_size-1:] + [0]*window_half_size
                 reversed_hist = list(map(int, reversed_hist))
 
-                seps, _ = find_peaks(reversed_hist, distance=median_height * self._cg.lines_hist_frequency)
+                seps, _ = find_peaks(reversed_hist, distance=median_height * self._cg.lines.lines_hist_frequency)
                 seps = list(seps)
                 if len(seps) > 0 and seps[0] < median_height:
                     seps = seps[1:]
@@ -319,9 +321,9 @@ class Ocr:
             for area_i, area_v in enumerate(page_v):
                 for line_i, line_v in enumerate(area_v):
                     line_v, x, _, width, text_height = _service.crop_image(line_v)
-                    space_threshold = text_height * self._cg.space_threshold
+                    space_threshold = text_height * self._cg.words.space_threshold
 
-                    is_paragraph = (x >= space_threshold * self._cg.paragraph_spaces)
+                    is_paragraph = (x >= space_threshold * self._cg.words.paragraph_spaces)
                     line_words = [is_paragraph]
 
                     histogram = _service.vertical_histogram(line_v)
@@ -413,7 +415,7 @@ class Ocr:
         self._s.save_image("binary_image", binary_image)
         self._s.save_image("grayscale_image", grayscale_image)
 
-        if self._cg.fix_rotation:
+        if self._cg.alignment.fix_rotation:
             angle = self._alignment_angle_calculation(binary_image)
             binary_image = _service.rotate_image(binary_image, angle, True)
             grayscale_image = _service.rotate_image(grayscale_image, angle)

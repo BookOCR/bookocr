@@ -217,7 +217,7 @@ class Stats:
         return cleaned_image
 
     def area_words_extraction_image(self, area_words, from_chars=False):
-        paragraph_width_multiplier = self._cg.space_threshold * self._cg.paragraph_spaces
+        paragraph_width_multiplier = self._cg.words.space_threshold * self._cg.words.paragraph_spaces
         line_images = []
         for line_words_i, line_words_v in enumerate(area_words):
             is_paragraph = line_words_v[0]
@@ -248,7 +248,7 @@ class Stats:
 
     def area_chars_extraction_image(self, area_chars):
         area_chars = copy.deepcopy(area_chars)
-        space_width_multiplier = self._cg.space_threshold * self._cg.paragraph_spaces
+        space_width_multiplier = self._cg.words.space_threshold * self._cg.words.paragraph_spaces
         area_words = []
         for line_chars_i, line_chars_v in enumerate(area_chars):
             line_words = [line_chars_v[0]]
