@@ -19,6 +19,7 @@ class Stats:
     def __init__(self, config: OcrConfig, stats_config: OcrStatsConfig):
         self._cg = config
         self._scg = stats_config
+        self._image_index = 0
 
     def save_text(self, label, text):
         with open(Path(self._scg.folder_path) / Path(label + ".txt"), "w") as f:
@@ -26,8 +27,10 @@ class Stats:
 
     def save_image(self, label, image):
         if self._scg.is_enabled:
-            path = Path(self._scg.folder_path) / Path(label + ".png")
+            indexed_label = f"{self._image_index}_{label}"
+            path = Path(self._scg.folder_path) / Path(indexed_label + ".png")
             cv2.imwrite(str(path), image)
+            self._image_index += 1
 
     def line_size(self, thickness=None):
         if thickness is None:
