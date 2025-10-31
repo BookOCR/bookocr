@@ -7,7 +7,7 @@ from importlib import resources
 
 _image_size = 32
 _char_labels = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,?!:;-()&'"
-_model_file = (resources.files(__package__) / "model.onnx")
+_model_file = (resources.files(__package__) / "model/model.onnx")
 
 
 def _flatten(xs):
