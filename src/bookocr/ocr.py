@@ -307,7 +307,7 @@ class Ocr:
                 if self._scg.is_enabled:
                     hist_image = self._s.horizontal_histogram_barriers(hist, seps)
                     self._s.save_image("h_" + str(page_i) + "_" + str(area_i), hist_image)
-                    hist_image = self._s.horizontal_histogram_barriers(max_v - reversed_hist, seps)
+                    hist_image = self._s.horizontal_histogram_barriers((max_v - reversed_hist).astype(np.uint64), seps)
                     self._s.save_image("hr_" + str(page_i) + "_" + str(area_i), hist_image)
                     text_image = self._s.horizontal_barriers(_service.gray2color(area_v), seps)
                     self._s.save_image("ht_" + str(page_i) + "_" + str(area_i), text_image)
