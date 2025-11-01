@@ -31,7 +31,7 @@ dependencies = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-bookocr = ["*.onnx"]
+bookocr = ["model/model.onnx"]
 
 [project.urls]
 "Homepage" = "https://github.com/Artem259/bookocr"
