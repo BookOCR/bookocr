@@ -3,9 +3,9 @@ import cv2
 import numpy as np
 from pathlib import Path
 
-from bookocr.config import OcrConfig
-from bookocr.stats_config import OcrStatsConfig
-import bookocr.ocr as _ocr
+from .config import OcrConfig
+from .stats_config import OcrStatsConfig
+from . import _service
 
 
 def transparent_image(shape, foreground_color, background_color, opacity):
@@ -19,6 +19,7 @@ class Stats:
     def __init__(self, config: OcrConfig, stats_config: OcrStatsConfig):
         self._cg = config
         self._scg = stats_config
+        self._image_index = 0
 
     def save_text(self, label, text):
         with open(Path(self._scg.folder_path) / Path(label + ".txt"), "w") as f:
@@ -26,8 +27,10 @@ class Stats:
 
     def save_image(self, label, image):
         if self._scg.is_enabled:
-            path = Path(self._scg.folder_path) / Path(label + ".png")
+            indexed_label = f"{self._image_index}_{label}"
+            path = Path(self._scg.folder_path) / Path(indexed_label + ".png")
             cv2.imwrite(str(path), image)
+            self._image_index += 1
 
     def line_size(self, thickness=None):
         if thickness is None:
@@ -205,23 +208,23 @@ class Stats:
         cv2.line(cleaned_image, (line_x, 0), (line_x, indicators_height), color, self._scg.lines_thickness)
         for coord_i in labels_to_clean:
             coord_v = coords[coord_i]
-            x0, x1 = coord_v[0], _ocr.x1_f(coord_v)
-            y0, y1 = coord_v[1], _ocr.y1_f(coord_v)
-            _ocr.copy_update_values(labels[y0:y1+1, x0:x1+1], cleaned_image[y0:y1+1, x0:x1+1], coord_i, list(color))
-            line_y = (coord_v[1] + _ocr.y1_f(coord_v)) // 2
+            x0, x1 = coord_v[0], _service.x1_f(coord_v)
+            y0, y1 = coord_v[1], _service.y1_f(coord_v)
+            _service.copy_update_values(labels[y0:y1+1, x0:x1+1], cleaned_image[y0:y1+1, x0:x1+1], coord_i, list(color))
+            line_y = (coord_v[1] + _service.y1_f(coord_v)) // 2
             cv2.line(cleaned_image, (line_x, line_y), (cleaned_image.shape[1], line_y),
                      color, self._scg.lines_thickness)
         return cleaned_image
 
     def area_words_extraction_image(self, area_words, from_chars=False):
-        paragraph_width_multiplier = self._cg.space_threshold * self._cg.paragraph_spaces
+        paragraph_width_multiplier = self._cg.words.space_threshold * self._cg.words.paragraph_spaces
         line_images = []
         for line_words_i, line_words_v in enumerate(area_words):
             is_paragraph = line_words_v[0]
             line_words_v = line_words_v[1:].copy()
             if not from_chars:
                 for word_i, word_v in enumerate(line_words_v):
-                    word_v = _ocr.gray2color(word_v)
+                    word_v = _service.gray2color(word_v)
                     line_words_v[word_i] = self.add_padding(word_v, 0)
                 line_image = self.horizontal_concatenation(line_words_v, last_barrier=True)
             else:
@@ -245,13 +248,13 @@ class Stats:
 
     def area_chars_extraction_image(self, area_chars):
         area_chars = copy.deepcopy(area_chars)
-        space_width_multiplier = self._cg.space_threshold * self._cg.paragraph_spaces
+        space_width_multiplier = self._cg.words.space_threshold * self._cg.words.paragraph_spaces
         area_words = []
         for line_chars_i, line_chars_v in enumerate(area_chars):
             line_words = [line_chars_v[0]]
             for word_chars_i, word_chars_v in enumerate(line_chars_v[1:], start=1):
                 for char_i, char_v in enumerate(word_chars_v):
-                    char_v = _ocr.gray2color(char_v)
+                    char_v = _service.gray2color(char_v)
                     char_v = self.add_padding(char_v, 0)
                     word_chars_v[char_i] = char_v
                 word_image = self.horizontal_concatenation(word_chars_v,

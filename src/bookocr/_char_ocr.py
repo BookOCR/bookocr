@@ -1,14 +1,13 @@
 import cv2
 import numpy as np
-import tensorflow as tf
+import onnxruntime as ort
 from PIL import Image
 from importlib import resources
 
 
 _image_size = 32
 _char_labels = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,?!:;-()&'"
-_model_file = (resources.files(__package__) / "model.h5")
-_model = tf.keras.models.load_model(_model_file)
+_model_file = (resources.files(__package__) / "model/model.onnx")
 
 
 def _flatten(xs):
@@ -41,13 +40,15 @@ def _preprocess(image):
     image = _resize(image, _image_size)
     _, image = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
     image = np.expand_dims(image, axis=-1)
-    image = image.astype(np.float32) / 255
+    image = image // 255
     return image
 
 
 def char_ocr(images_list):
-    images_list = np.array(list(map(_preprocess, images_list)), np.uint8)
-    prediction = _model.predict(images_list, verbose=0)
+    images_list = np.array(list(map(_preprocess, images_list)), np.float32)
+    session = ort.InferenceSession(_model_file)
+    inputs = {session.get_inputs()[0].name: images_list}
+    prediction = session.run(None, inputs)[0]
     return [_char_labels[int(np.argmax(x))] for x in prediction]
 
 

@@ -22,14 +22,16 @@ dependencies = [
     "pandas>=2.0.1",
     "scipy>=1.10.1",
     "tensorflow>=2.12.0",
-    "Pillow>=9.5.0"
+    "Pillow>=9.5.0",
+    "onnxruntime>=1.19.2",
+    "pydantic>=2.12.3",
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-bookocr = ["*.h5"]
+bookocr = ["model/model.onnx"]
 
 [project.urls]
 "Homepage" = "https://github.com/Artem259/bookocr"
